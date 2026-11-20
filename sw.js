@@ -1,5 +1,5 @@
 /* Service Worker：缓存应用外壳与词库，离线可用 */
-const CACHE = 'dict-pwa-v2';
+const CACHE = 'dict-pwa-v3';
 const ASSETS = [
   './',
   './index.html',
