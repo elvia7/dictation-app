@@ -311,6 +311,7 @@ const App = (function () {
     state.plan = null;
     render();
     toast(wrongs.length ? '已记录，' + wrongs.length + ' 个词进入错词库' : '全部正确，真棒！');
+    if (getSyncCfg()) doSync(true); // 已配置云同步时自动推送
   }
 
   // ---------- 三个标签页渲染 ----------
@@ -606,6 +607,113 @@ const App = (function () {
       ]);
   }
 
+  // ---------- 云同步（GitHub 私有仓库存储，双向合并） ----------
+  const SYNC_CFG_KEY = 'dict.sync.cfg.v1';
+  function getSyncCfg() { try { return JSON.parse(localStorage.getItem(SYNC_CFG_KEY) || 'null'); } catch (e) { return null; } }
+  function saveSyncCfg(c) { try { localStorage.setItem(SYNC_CFG_KEY, JSON.stringify(c)); } catch (e) {} }
+  function ghReq(cfg, method, body) {
+    const url = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + (cfg.path || 'records.json') + '?ref=' + (cfg.branch || 'main');
+    return fetch(url, {
+      method: method,
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
+  function b64enc(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function b64dec(b64) {
+    const bin = atob(b64.replace(/\s/g, ''));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  async function pullRemote(cfg) {
+    const res = await ghReq(cfg, 'GET');
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    return JSON.parse(b64dec(d.content));
+  }
+  async function pushRemote(cfg, obj) {
+    let sha = null;
+    const g = await ghReq(cfg, 'GET');
+    if (g.ok) sha = (await g.json()).sha;
+    else if (g.status !== 404) throw new Error('HTTP ' + g.status);
+    const res = await ghReq(cfg, 'PUT', {
+      message: 'sync ' + new Date().toISOString(),
+      content: b64enc(JSON.stringify(obj)),
+      branch: cfg.branch || 'main',
+      ...(sha ? { sha } : {})
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  }
+  function snapshot() {
+    return { updated: Date.now(), history: Store.getHistory(), wrong: Store.getWrong(), custom: Store.getCustom(), cust: Store.getCust() };
+  }
+  function mergeRemote(remote) {
+    let changed = false;
+    // 听写历史：按 ts 去重合并
+    const h = Store.getHistory(); const seen = new Set(h.map(x => x.ts));
+    (remote.history || []).forEach(x => { if (!seen.has(x.ts)) { h.push(x); changed = true; } });
+    if (changed) h.sort((a, b) => a.ts - b.ts);
+    Store.setHistory(h);
+    // 错词库：按词合并，次数取大
+    const wl = Store.getWrong(); const map = {}; wl.forEach(x => { map[x.w] = x; });
+    (remote.wrong || []).forEach(x => {
+      const e = map[x.w];
+      if (!e) { const ne = { w: x.w, n: x.n, last: x.last }; wl.push(ne); map[x.w] = ne; changed = true; }
+      else if (x.n > e.n) { e.n = x.n; e.last = x.last; changed = true; }
+    });
+    Store.setWrong(wl);
+    // 我的词组：按 id 合并
+    const cl = Store.getCustom(); const ids = new Set(cl.map(x => x.id));
+    (remote.custom || []).forEach(x => { if (!ids.has(x.id)) { cl.push(x); changed = true; } });
+    Store.setCustom(cl);
+    // 教材修改层：合并（冲突时保留本地）
+    const cur = Store.getCust(); const rc = remote.cust || {};
+    Object.keys(rc.lessons || {}).forEach(k => { if (!(k in cur.lessons)) { cur.lessons[k] = rc.lessons[k]; changed = true; } });
+    (rc.deleted || []).forEach(k => { if (cur.deleted.indexOf(k) < 0) { cur.deleted.push(k); changed = true; } });
+    (rc.added || []).forEach(a => { if (!cur.added.some(x => x.id === a.id)) { cur.added.push(a); changed = true; } });
+    Store.importCust(cur);
+    return changed;
+  }
+  async function doSync(silent) {
+    const cfg = getSyncCfg();
+    if (!cfg || !cfg.repo || !cfg.token) { if (!silent) openSyncSetup(); return; }
+    try {
+      if (!silent) toast('同步中…');
+      const remote = await pullRemote(cfg);
+      let changed = false;
+      if (remote) changed = mergeRemote(remote);
+      await pushRemote(cfg, snapshot());
+      if (!silent) toast(changed ? '已同步：合并了其他设备的记录' : '已同步：本地与云端一致');
+      if (changed) render();
+    } catch (e) {
+      if (!silent) toast('同步失败：' + e.message);
+    }
+  }
+  function openSyncSetup() {
+    const cfg = getSyncCfg() || { repo: 'elvia7/dictation-sync', branch: 'main', path: 'records.json', token: '' };
+    showModal('云同步设置',
+      '<p class="fld-hint">听写历史、错词库、词组、教材修改将存入 GitHub 私有仓库 <b>' + esc(cfg.repo) + '</b>（仅你本人可读）。每台设备填一次令牌即可互相同步。</p>'
+      + '<label class="fld">仓库（用户名/仓库名）<input id="syRepo" value="' + esc(cfg.repo) + '"></label>'
+      + '<label class="fld">访问令牌（ghp_ 开头）<input id="syToken" type="password" value="' + esc(cfg.token || '') + '" placeholder="粘贴 GitHub 令牌"></label>'
+      + '<p class="fld-hint">令牌只保存在本机浏览器里，不写进网页源码、不上传给第三方（仅直连 GitHub API）。</p>',
+      [
+        { text: '取消', cls: 'ghost' },
+        { text: '保存并同步', cls: 'primary', fn: () => {
+          const repo = $('#syRepo').value.trim(), token = $('#syToken').value.trim();
+          if (!repo || !token) { toast('请填写仓库和令牌'); return false; }
+          saveSyncCfg({ repo, branch: 'main', path: 'records.json', token });
+          doSync(false);
+        } }
+      ]);
+  }
+
   // ---------- 主渲染 ----------
   function render() {
     const tabs = document.querySelectorAll('.tab');
@@ -620,6 +728,7 @@ const App = (function () {
 
   // ---------- 事件绑定 ----------
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => { state.tab = t.dataset.tab; render(); });
+  $('#syncBtn').onclick = () => doSync(false);
   $('#cartFab').onclick = openCart;
   $('#overlay').onclick = closeSheet;
   $('#calOverlay').onclick = () => { $('#calSheet').classList.add('hidden'); $('#calOverlay').classList.add('hidden'); };
@@ -633,5 +742,6 @@ const App = (function () {
   // 启动
   render();
   if (speechSynthesis) speechSynthesis.getVoices(); // 预热声音列表
+  if (getSyncCfg()) doSync(true); // 已配置云同步时启动即拉取合并
   return { render };
 })();
