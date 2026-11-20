@@ -1,0 +1,17 @@
+{
+  "name": "课后三表循环听写",
+  "short_name": "循环听写",
+  "description": "小学语文识字表/写字表/词语表循环听写，纯本地离线使用",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F7F8FA",
+  "theme_color": "#FF8C42",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
