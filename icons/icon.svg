@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFA05C"/>
+      <stop offset="100%" stop-color="#FF8C42"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 耳朵（左蓝右黄） -->
+  <rect x="96" y="220" width="120" height="180" rx="56" fill="#4A90E2"/>
+  <rect x="296" y="220" width="120" height="180" rx="56" fill="#FFC56E"/>
+  <circle cx="156" cy="290" r="24" fill="#FFFFFF"/>
+  <circle cx="356" cy="290" r="24" fill="#FFFFFF"/>
+  <circle cx="164" cy="298" r="10" fill="#2D3436"/>
+  <circle cx="364" cy="298" r="10" fill="#2D3436"/>
+  <!-- 头顶弧线 -->
+  <path d="M156 220 C156 96 356 96 356 220" fill="none" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round"/>
+  <!-- 课本 -->
+  <rect x="176" y="416" width="160" height="28" rx="14" fill="#FFFFFF" opacity="0.9"/>
+</svg>
