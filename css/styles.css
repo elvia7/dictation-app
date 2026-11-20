@@ -233,3 +233,7 @@ body.cart-open .sheet-head .x{margin-right:72px;}
 .cal-clear2{border:none;background:var(--tint);color:var(--primary-d);font-size:13px;font-weight:700;padding:6px 14px;border-radius:999px;}
 
 /* 自定义：三种输入方式 */
+
+/* 云同步按钮 */
+.sync-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.75);border-radius:999px;padding:5px 14px;font-size:13px;font-weight:700;letter-spacing:.5px;white-space:nowrap;cursor:pointer;}
+.sync-btn:active{transform:translateY(-50%) scale(.94);}
