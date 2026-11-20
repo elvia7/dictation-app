@@ -39,7 +39,7 @@ const App = (function () {
     actions.forEach(a => {
       const b = document.createElement('button');
       b.className = 'btn ' + (a.cls || 'ghost'); b.textContent = a.text;
-      b.onclick = () => { if (!a.keep) hideModal(); a.fn && a.fn(); };
+      b.onclick = () => { const r = a.fn ? a.fn() : undefined; if (r !== false && !a.keep) hideModal(); };
       acts.appendChild(b);
     });
     $('#modalMask').classList.remove('hidden');
@@ -59,9 +59,9 @@ const App = (function () {
       html += '<div class="lesson-card' + (l.flag ? ' flag' : '') + (l.added ? ' added' : '') + '">'
         + '<div class="lc-head"><span class="lc-lesson">' + esc(l.lesson) + '</span>'
         + (l.flag ? '<span class="lc-flag">重点</span>' : '')
-        + '<div class="lc-acts"><button class="lc-add" data-edit="' + esc(meta.key) + '|' + t + '|' + i + '" style="background:#8b5cf6;">编辑</button>'
+        + '<div class="lc-acts"><button class="lc-add" data-ek="' + esc(meta.key) + '" data-et="' + t + '" data-ei="' + i + '" style="background:#8b5cf6;">编辑</button>'
         + (l.added ? '<button class="lc-add" data-deladded="' + esc(l._meta.id) + '" style="background:#ef4444;">删除</button>' : '')
-        + '<button class="lc-add" data-add="' + esc(meta.key) + '|' + t + '|' + i + '">' + (inCart ? '已在单' : '加入') + '</button></div></div>'
+        + '<button class="lc-add" data-ak="' + esc(meta.key) + '" data-at="' + t + '" data-ai="' + i + '">' + (inCart ? '已在单' : '加入') + '</button></div></div>'
         + '<div class="chips">' + (l.items || []).map(w => '<span class="chip">' + esc(w) + '</span>').join('') + '</div>'
         + '</div>';
     });
@@ -76,7 +76,7 @@ const App = (function () {
     const s = $('#sheet'); s.classList.remove('hidden');
     $('#overlay').classList.remove('hidden');
     const hasAdd = g.grade >= 1;
-    s.innerHTML = '<div class="sheet-head">一年级' + (g.sem === '上' ? '上' : '下') + '册 · 三表内容<button class="x" data-close>×</button></div>'
+    s.innerHTML = '<div class="sheet-head">' + g.grade + '年级' + (g.sem === '上' ? '上' : '下') + '册 · 三表内容<button class="x" data-close>×</button></div>'
       + '<div class="sheet-acts">' + (hasAdd ? '<button class="btn ghost" id="addLessonBtn">＋ 新增一课</button>' : '') + '</div>'
       + '<div class="tbl-sheet-body">'
       + tableBlock(gd, '识字表', meta)
@@ -86,12 +86,12 @@ const App = (function () {
     s.querySelectorAll('[data-close]').forEach(b => b.onclick = closeSheet);
     const addBtn = s.querySelector('#addLessonBtn');
     if (addBtn) addBtn.onclick = () => openLessonEditor(meta, null, null, 'add');
-    s.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addToCart(b.dataset.add, s));
-    s.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
-      const [key, t, i] = b.dataset.edit.split('|');
+    s.querySelectorAll('[data-ak]').forEach(b => b.onclick = () => addToCart(b, s));
+    s.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => {
+      const key = b.dataset.ek, t = b.dataset.et, i = +b.dataset.ei;
       const g2 = D().grades.find(x => (x.grade + '|' + x.sem) === key);
-      const l = g2.tables[t][+i];
-      openLessonEditor({ key, grade: g2.grade, sem: g2.sem }, t, +i, l._meta.kind, l._meta.id);
+      const l = g2.tables[t][i];
+      openLessonEditor({ key, grade: g2.grade, sem: g2.sem }, t, i, l._meta.kind, l._meta.id);
     });
     s.querySelectorAll('[data-deladded]').forEach(b => b.onclick = () => {
       showModal('删除确认', '<p style="font-size:15px;">确定删除这课新增内容吗？</p>', [
@@ -126,7 +126,7 @@ const App = (function () {
           raw.split(/\n+/).forEach(line => {
             line.split(/[ \t,，、;；]+/).forEach(w => { w = w.trim(); if (w) items.push(w); });
           });
-          if (!items.length) { toast('请至少填写一个词'); showModal(kind === 'add' ? '新增一课' : '编辑「' + label + '」', '<label class="fld">课名 / 标题<input id="edLabel" value="' + esc(label) + '"></label><label class="fld">词语<textarea id="edItems" rows="7">' + esc(raw) + '</textarea></label>', arguments); return; }
+          if (!items.length) { toast('请至少填写一个词'); return false; }
           if (kind === 'add') Store.addLesson(meta.grade, meta.sem, tableName || '识字表', label, items);
           else if (kind === 'edit') Store.editLesson({ kind: 'base', sid: D().grades.find(x => (x.grade + '|' + x.sem) === meta.key).tables[tableName][idx]._meta.sid }, label, items);
           else Store.editLesson({ kind: 'added', id: addedId }, label, items);
@@ -137,17 +137,17 @@ const App = (function () {
   }
 
   // ---------- 加入购物车 ----------
-  function addToCart(key, sheetEl) {
-    const [gk, t, i] = key.split('|');
+  function addToCart(btn, sheetEl) {
+    const gk = btn.dataset.ak, t = btn.dataset.at, i = +btn.dataset.ai;
     const gd = D().grades.find(x => (x.grade + '|' + x.sem) === gk);
-    const l = gd.tables[t][+i];
-    const item = { key: gk + ':' + t + ':' + i, grade: gd.grade, sem: gd.sem, table: t, lesson: l.lesson, items: l.items.slice() };
+    const l = gd.tables[t][i];
+    const key = gk + ':' + t + ':' + i;
+    const item = { key, grade: gd.grade, sem: gd.sem, table: t, lesson: l.lesson, items: l.items.slice() };
     const added = Store.pushCart(item);
     toast(added ? '已加入听写单' : '已在听写单中（已合并）');
     updateCartBadge();
-    if (sheetEl && document.body.contains(sheetEl)) {
-      const b = sheetEl.querySelector('[data-add="' + CSS.escape(key) + '"]');
-      if (b) { b.textContent = '已在单'; b.onclick = () => toast('已在听写单中（已合并）'); }
+    if (btn && document.body.contains(btn)) {
+      btn.textContent = '已在单'; btn.onclick = () => toast('已在听写单中（已合并）');
     }
   }
 
